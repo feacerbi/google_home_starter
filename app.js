@@ -7,8 +7,6 @@ const bodyParser= require('body-parser');
 const path = require('path')
 const app = express();
 
-
-
 // Switch states held in memory
 const switches = [];
 
@@ -27,9 +25,6 @@ readableStream.on('end', function() {
     switches.push(new Switch(parsed.switches[i]))
   }
 });
-
-
-
 
 // Switch Model
 // Expects an object:{
@@ -51,7 +46,7 @@ function Switch(switchValues){
     }
   }
   this.setState = function(state){
-    var str = state === "on" ? onString(this.id[2]) : offString(this.id[2]);
+    var str = actionString(this.id[2], state);
     PythonShell.run(str, function (err) {
       if (!process.env.DEV){
         if (err) throw err;
@@ -64,15 +59,9 @@ function Switch(switchValues){
 }    
 
 // needed due to a quirk with PythonShell
-function onString(number){
-  return './public/python/sw' + number + '_on.py'
+function actionString(number, action){
+  return './public/python/sw' + number + '_' + action + '.py'
 }
-function offString(number){
-  return './public/python/sw' + number + '_off.py'
-}
-
-
-
 
 // Switch Lookup
 function getSwitch(string){
@@ -88,7 +77,6 @@ function saveState (){
   }
   fs.writeFile('./saveState.json', JSON.stringify(formattedState) )
 }
-
 
 //Server Configuration
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -110,24 +98,35 @@ app.get('/api/switches/:id', function(req, res){
 })
 
 app.post('/api/switches/:id', function(req, res){
-
 // For now, uses a simple password query in the url string. 
 // Example: POST to localhost:8000/API/switches/sw1?password=test
   if (req.query.password === process.env.PASS){
     var foundSwitch = getSwitch(req.params.id);
     
     // Optional On / Off command. If not included, defaults to a toggle.
+    var action = req.query.command;
+    console.log("action: " + action)
 
-    if(!(req.query.command === "on" || req.query.command === "off")){
-      foundSwitch.toggle();
+    if((action === "on" || action === "off")){
+      foundSwitch.setState(action)
+      console.log("postSwitch "+JSON.stringify(foundSwitch));
+      res.json(foundSwitch);
     }
-    else {
-      foundSwitch.setState(req.query.command)
+    else if(action === "all"){
+      for(i=1;i<=switches.length;i++){
+        foundSwitch = getSwitch("sw" + i);
+	foundSwitch.toggle();
+        console.log("postSwitch "+JSON.stringify(foundSwitch));
+      }
+      res.json(switches);
+    }
+    else{ 
+      foundSwitch.toggle();
+      console.log("postSwitch "+JSON.stringify(foundSwitch));
+      res.json(foundSwitch);
     }
 
     saveState();
-    console.log("postSwitch "+JSON.stringify(foundSwitch));
-    res.json(foundSwitch);
   }
   else {
     console.log("invalid password")
